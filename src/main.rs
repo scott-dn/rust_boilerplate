@@ -3,11 +3,16 @@ use std::path::PathBuf;
 use clap::Parser;
 use cli::{Cli, Cmd};
 use config::{Config, LogFmt};
-use tracing::{debug, info, trace};
+use server::Server;
+use services::book::BookService;
+use tracing::{error, trace};
 use tracing_subscriber::{prelude::*, EnvFilter};
 
 mod cli;
 mod config;
+mod model;
+mod server;
+mod services;
 
 #[tokio::main]
 async fn main() {
@@ -34,10 +39,15 @@ async fn main() {
         }
     };
 
-    info!("hello");
-    debug!("hello");
-    trace!("hello");
+    trace!("config: {:?}", config);
+
     match cli.command {
-        Cmd::Start => {}
+        Cmd::Start => {
+            let book_service = BookService::new();
+            let server = Server::new(config, book_service);
+            if let Err(e) = server.start().await {
+                error!("fail to start server {}", e);
+            }
+        }
     }
 }
