@@ -1,7 +1,7 @@
 .PHONY: build docker fmt lint test
 
 build:
-	todo
+	cargo build -r
 
 docker:
 	todo
@@ -10,7 +10,7 @@ fmt:
 	cargo +nightly fmt
 
 lint:
-	todo
+	cargo clippy --all-targets --all-features -- -D warnings -D clippy::all
 
 test:
-	todo
+	cargo test
