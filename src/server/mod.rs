@@ -4,9 +4,9 @@ use std::{net::SocketAddr, sync::Arc};
 
 use anyhow::Result;
 use axum::{routing::get, Router};
+use controller::get_books;
 use tracing::info;
 
-use self::controller::get_books;
 use crate::{config::Config, services::book::IBookService};
 
 #[derive(Clone)]

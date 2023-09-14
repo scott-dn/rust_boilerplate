@@ -5,8 +5,7 @@ use axum::{
     response::{IntoResponse, Json, Response},
 };
 
-use super::Server;
-use crate::services::book::IBookService;
+use crate::{server::Server, services::book::IBookService};
 
 pub async fn get_books<T>(State(state): State<Arc<Server<T>>>) -> Response
 where

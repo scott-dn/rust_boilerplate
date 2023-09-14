@@ -51,9 +51,9 @@ impl Config {
             if let Some(parent_dir) = file.parent() {
                 create_dir_all(parent_dir)?;
                 let config = Config::default();
-                let mut file = File::create(file)?;
+                let mut new_file = File::create(file)?;
                 let toml = toml::to_string(&config)?;
-                file.write_all(toml.as_bytes())?;
+                new_file.write_all(toml.as_bytes())?;
                 return Ok(config);
             }
             bail!("parent dir not found");
