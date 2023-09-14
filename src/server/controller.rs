@@ -5,12 +5,27 @@ use axum::{
     response::{IntoResponse, Json, Response},
 };
 
-use crate::{server::Server, services::book::IBookService};
+use crate::{
+    model::{request::book::AddBookRequest, response::HttpResponse},
+    server::Server,
+    services::book::IBookService,
+};
 
 pub async fn get_books<T>(State(state): State<Arc<Server<T>>>) -> Response
 where
-    T: IBookService + Sync + Send + 'static,
+    T: IBookService,
 {
-    let books = state.services.book.get_books();
-    Json(books).into_response()
+    let books = state.services.book.get_books().await.unwrap();
+    Json(HttpResponse { data: books }).into_response()
+}
+
+pub async fn add_books<T>(
+    State(state): State<Arc<Server<T>>>,
+    Json(book): Json<AddBookRequest>,
+) -> Response
+where
+    T: IBookService,
+{
+    let books = state.services.book.add_books(book).await.unwrap();
+    Json(HttpResponse { data: books }).into_response()
 }

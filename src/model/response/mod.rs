@@ -1,7 +1,8 @@
 pub mod book;
+
 use serde::Serialize;
 
 #[derive(Serialize)]
-pub struct Response<T> {
+pub struct HttpResponse<T> {
     pub data: T,
 }

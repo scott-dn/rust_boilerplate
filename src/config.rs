@@ -23,6 +23,8 @@ pub enum LogFmt {
 pub struct Server {
     pub mode: Mode,
     pub http_port: u16,
+    pub pg_url: String,
+    pub pg_max_pool: u32,
 }
 
 #[derive(Clone, Serialize, Deserialize, Debug)]
@@ -40,6 +42,8 @@ impl Default for Config {
             server: Server {
                 mode: Mode::Local,
                 http_port: 8080,
+                pg_url: "postgres://service:password@localhost:5432/book?sslmode=disable".into(),
+                pg_max_pool: 50,
             },
         }
     }

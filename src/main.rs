@@ -3,6 +3,7 @@ use std::path::PathBuf;
 use clap::Parser;
 use cli::{Cli, Cmd};
 use config::{Config, LogFmt};
+use database::Database;
 use server::Server;
 use services::book::BookService;
 use tracing::{error, trace};
@@ -10,10 +11,19 @@ use tracing_subscriber::{prelude::*, EnvFilter};
 
 mod cli;
 mod config;
+mod database;
 mod model;
 mod server;
 mod services;
 
+// TODO
+// pg, migrate, log
+// middleware
+// docker
+// swagger
+// redis
+// test
+// doc
 #[tokio::main]
 async fn main() {
     let cli = Cli::parse();
@@ -43,7 +53,8 @@ async fn main() {
 
     match cli.command {
         Cmd::Start => {
-            let book_service = BookService::new();
+            let database = Database::new(&config).await.unwrap();
+            let book_service = BookService::new(database);
             let server = Server::new(config, book_service);
             if let Err(e) = server.start().await {
                 error!("fail to start server {}", e);

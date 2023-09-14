@@ -14,3 +14,4 @@ target/
 *.pdb
 
 .idea
+data

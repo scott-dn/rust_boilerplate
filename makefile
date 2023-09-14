@@ -1,10 +1,10 @@
-.PHONY: build docker fmt lint test
+.PHONY: build docker fmt lint test pg-up pg-down
 
 build:
 	cargo build -r
 
 docker:
-	todo
+	docker compose up -d
 
 fmt:
 	cargo +nightly fmt
@@ -14,3 +14,9 @@ lint:
 
 test:
 	cargo test
+
+pgup:
+	sqlx migrate run
+
+pgdown:
+	sqlx migrate revert

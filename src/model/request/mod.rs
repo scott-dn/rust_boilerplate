@@ -1,1 +1,1 @@
-mod book;
+pub mod book;
