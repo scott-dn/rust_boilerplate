@@ -1,27 +1,34 @@
-use anyhow::Result;
+use std::sync::Arc;
+
 use async_trait::async_trait;
+use thiserror::Error;
 
 use crate::{
     database::{entities::books::Book, IDatabase},
-    model::request::book::AddBookRequest,
+    model::requests::book::AddBookRequest,
 };
+
+#[derive(Error, Debug)]
+pub enum BookServiceErr {
+    #[error(transparent)]
+    Other(#[from] anyhow::Error),
+}
 
 #[async_trait]
 pub trait IBookService {
-    async fn get_books(&self) -> Result<Vec<Book>>;
-    async fn add_books(&self, book: AddBookRequest) -> Result<Book>;
+    async fn get_books(&self) -> Result<Vec<Book>, BookServiceErr>;
+    async fn add_books(&self, book: AddBookRequest) -> Result<Book, BookServiceErr>;
 }
 
-#[derive(Clone)]
 pub struct BookService<T: IDatabase> {
-    db: T,
+    db: Arc<T>,
 }
 
 impl<T> BookService<T>
 where
     T: IDatabase,
 {
-    pub fn new(db: T) -> Self {
+    pub fn new(db: Arc<T>) -> Self {
         Self { db }
     }
 }
@@ -31,15 +38,18 @@ impl<T> IBookService for BookService<T>
 where
     T: IDatabase + Send + Sync,
 {
-    async fn get_books(&self) -> Result<Vec<Book>> {
-        let books = sqlx::query_as!(Book, "select * from books")
+    async fn get_books(&self) -> Result<Vec<Book>, BookServiceErr> {
+        match sqlx::query_as!(Book, "select * from books")
             .fetch_all(self.db.get_pool())
-            .await?;
-        Ok(books)
+            .await
+        {
+            Ok(books) => Ok(books),
+            Err(e) => Err(BookServiceErr::Other(e.into())),
+        }
     }
 
-    async fn add_books(&self, book: AddBookRequest) -> Result<Book> {
-        let book = sqlx::query_as!(
+    async fn add_books(&self, book: AddBookRequest) -> Result<Book, BookServiceErr> {
+        match sqlx::query_as!(
             Book,
             r#"
                 insert into books ("name", "author", "description") values($1, $2, $3)
@@ -50,7 +60,10 @@ where
             book.description,
         )
         .fetch_one(self.db.get_pool())
-        .await?;
-        Ok(book)
+        .await
+        {
+            Ok(book) => Ok(book),
+            Err(e) => Err(BookServiceErr::Other(e.into())),
+        }
     }
 }

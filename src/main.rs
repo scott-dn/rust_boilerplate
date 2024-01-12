@@ -1,37 +1,38 @@
-use std::path::PathBuf;
+use std::{path::PathBuf, sync::Arc};
 
+use anyhow::{Context, Result};
 use clap::Parser;
 use cli::{Cli, Cmd};
 use config::{Config, LogFmt};
 use database::Database;
-use server::Server;
-use services::book::BookService;
-use tracing::{error, trace};
+use http::Server;
+use services::{book::BookService, health::HealthService};
+use tracing::trace;
 use tracing_subscriber::{prelude::*, EnvFilter};
+
+use crate::utils::github::build_client;
 
 mod cli;
 mod config;
 mod database;
+mod http;
 mod model;
-mod server;
 mod services;
+mod utils;
 
 // TODO
-// pg, migrate, log
-// middleware
+// auth
 // docker
 // swagger
 // redis
 // test
-// doc
+// CI/CD
 #[tokio::main]
-async fn main() {
+async fn main() -> Result<()> {
     let cli = Cli::parse();
 
-    let config = match Config::from_file(PathBuf::from(&cli.config)) {
-        Ok(config) => config,
-        Err(e) => panic!("couldn't read config file: {}\n{}", cli.config, e),
-    };
+    let config =
+        Config::from_file(PathBuf::from(&cli.config)).context("Could not read config file")?;
 
     // init logger
     match config.log_format {
@@ -41,7 +42,7 @@ async fn main() {
                 .with(EnvFilter::from_default_env())
                 .init();
         }
-        LogFmt::Txt => {
+        LogFmt::Text => {
             tracing_subscriber::registry()
                 .with(tracing_subscriber::fmt::layer().pretty())
                 .with(EnvFilter::from_default_env())
@@ -53,12 +54,25 @@ async fn main() {
 
     match cli.command {
         Cmd::Start => {
-            let database = Database::new(&config).await.unwrap();
-            let book_service = BookService::new(database);
-            let server = Server::new(config, book_service);
-            if let Err(e) = server.start().await {
-                error!("fail to start server {}", e);
-            }
+            let gh_client = build_client(config.github_app.app_id, &config.github_app.secret)
+                .context("Failed to build github client")?;
+
+            Database::migrate(&config)
+                .await
+                .context("Failed to migrate database")?;
+
+            let db = Arc::new(
+                Database::new(&config)
+                    .await
+                    .context("Failed to initialize database")?,
+            );
+
+            let health_service = HealthService::new(Database::new_with_no_log(&config).await?);
+            let book_service = BookService::new(Arc::clone(&db));
+            let server = Server::new(config, gh_client, health_service, book_service);
+            server.start().await.context("Failed to start server {}")?;
         }
     }
+
+    Ok(())
 }

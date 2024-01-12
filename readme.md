@@ -1,4 +1,4 @@
-# Boilerplate
+# Server
 
 ## Code structure
 
@@ -9,11 +9,15 @@ $ tree -d -L 4 --gitignore
 └── src
     ├── database
     │   └── entities
+    ├── http
+    │   ├── controllers
+    │   ├── handlers
+    │   └── utils
     ├── model
-    │   ├── request
-    │   └── response
-    ├── server
-    └── services
+    │   ├── requests
+    │   └── responses
+    ├── services
+    └── utils
 ```
 
 ### How to develop
@@ -74,6 +78,9 @@ $ make lint
 #### Migration
 
 ```bash
+# new
+$ sqlx migrate add <new_migration_name>
+
 # up
 $ make pgup
 

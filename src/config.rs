@@ -7,19 +7,21 @@ use std::{
 use anyhow::{bail, Result};
 use serde::{Deserialize, Serialize};
 
-#[derive(Clone, Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug)]
 pub struct Config {
     pub log_format: LogFmt,
     pub server: Server,
+    pub github_app: GithubApp,
+    pub jwt_secret: String,
 }
 
-#[derive(Clone, Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug)]
 pub enum LogFmt {
     Json,
-    Txt,
+    Text,
 }
 
-#[derive(Clone, Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug)]
 pub struct Server {
     pub mode: Mode,
     pub http_port: u16,
@@ -27,12 +29,20 @@ pub struct Server {
     pub pg_max_pool: u32,
 }
 
-#[derive(Clone, Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug)]
 pub enum Mode {
     Local,
     Dev,
     Uat,
     Prod,
+}
+
+#[derive(Serialize, Deserialize, Debug, Default)]
+pub struct GithubApp {
+    pub app_id: u64,
+    pub client_id: String,
+    pub client_secret: String,
+    pub secret: String,
 }
 
 impl Default for Config {
@@ -45,6 +55,8 @@ impl Default for Config {
                 pg_url: "postgres://service:password@localhost:5432/book?sslmode=disable".into(),
                 pg_max_pool: 50,
             },
+            github_app: GithubApp::default(),
+            jwt_secret: "".into(),
         }
     }
 }
