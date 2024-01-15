@@ -3,7 +3,11 @@ use std::collections::HashMap;
 use anyhow::anyhow;
 use axum::{
     extract::{Query, State},
-    http::StatusCode,
+    http::{
+        header::{LOCATION, SET_COOKIE},
+        HeaderMap,
+        StatusCode,
+    },
     response::{IntoResponse, Response},
     Json,
 };
@@ -11,11 +15,11 @@ use axum::{
 use super::InternalState;
 use crate::{
     http::utils::err_handler::response_unhandled_err,
-    model::responses::auth::{Auth, INVALID_OATH_CODE, MISSING_OATH_CODE},
+    model::responses::auth::{INVALID_OATH_CODE, MISSING_OATH_CODE},
     services::{book::IBookService, health::IHealthService},
     utils::{
-        github::{exchange_user_token, get_user_email_from_token},
-        jwt::encode_jwt,
+        github::{exchange_user_token, get_user_from_token},
+        jwt,
     },
 };
 
@@ -45,15 +49,57 @@ where
         }
     };
 
-    let user_email = match get_user_email_from_token(&gh_oauth.access_token).await {
-        Ok(user_email) => user_email,
+    let user = match get_user_from_token(&gh_oauth.access_token).await {
+        Ok(user) => user,
         Err(e) => return response_unhandled_err(e),
     };
 
-    let jwt = match encode_jwt(user_email, &state.config.jwt_secret) {
+    let jwt = match jwt::encode(
+        *user.id,
+        user.email.unwrap_or("".into()),
+        &state.config.auth.jwt.secret,
+        state.config.auth.jwt.expire_in,
+    ) {
         Ok(jwt) => jwt,
         Err(e) => return response_unhandled_err(anyhow!(e)),
     };
 
-    (StatusCode::OK, Json(Auth { access_token: jwt })).into_response()
+    // TODO: update database
+
+    (
+        StatusCode::FOUND,
+        [
+            (
+                SET_COOKIE,
+                format!(
+                    "access_token={jwt};SameSite=None;Secure;HttpOnly;Max-Age={}",
+                    state.config.auth.jwt.expire_in
+                ),
+            ),
+            (LOCATION, String::from(&state.config.auth.redirect_url)),
+        ],
+    )
+        .into_response()
+}
+
+pub async fn verify<THealthService, TBookService>(
+    headers: HeaderMap,
+    State(state): InternalState<THealthService, TBookService>,
+) -> StatusCode
+where
+    THealthService: IHealthService,
+    TBookService: IBookService,
+{
+    let cookie = match headers.get("cookie") {
+        Some(cookie) => match cookie.to_str() {
+            Ok(cookie) => cookie,
+            Err(_) => return StatusCode::UNAUTHORIZED,
+        },
+        None => return StatusCode::UNAUTHORIZED,
+    };
+
+    match jwt::decode(&cookie[13..], &state.config.auth.jwt.secret) {
+        Ok(_) => StatusCode::OK,
+        Err(_) => StatusCode::UNAUTHORIZED,
+    }
 }

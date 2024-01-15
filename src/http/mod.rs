@@ -6,7 +6,7 @@ use std::{iter::once, net::SocketAddr, sync::Arc, time::Duration};
 
 use anyhow::Result;
 use axum::{
-    http::header::AUTHORIZATION,
+    http::{header::AUTHORIZATION, Method},
     routing::{get, post},
     Router,
     ServiceExt,
@@ -18,6 +18,7 @@ use tower::ServiceBuilder;
 use tower_http::{
     catch_panic::CatchPanicLayer,
     compression::{CompressionLayer, CompressionLevel},
+    cors::CorsLayer,
     normalize_path::NormalizePath,
     request_id::{MakeRequestUuid, PropagateRequestIdLayer, SetRequestIdLayer},
     sensitive_headers::SetSensitiveRequestHeadersLayer,
@@ -71,6 +72,17 @@ where
         let http_address = SocketAddr::from(([0, 0, 0, 0], self.config.server.http_port));
 
         let middleware = ServiceBuilder::new()
+            .layer(
+                CorsLayer::new()
+                    .allow_credentials(true)
+                    .allow_methods([Method::GET, Method::POST, Method::PUT, Method::DELETE])
+                    .allow_origin([self.config.site_url.parse().expect("invalid site url")])
+                    .allow_headers([
+                        "x-request-id".parse().expect("invalid header"),
+                        "content-type".parse().expect("invalid header"),
+                    ])
+                    .max_age(Duration::from_secs(3600)),
+            )
             .layer(SetSensitiveRequestHeadersLayer::new(once(AUTHORIZATION)))
             .layer(CompressionLayer::new().quality(CompressionLevel::Fastest))
             .layer(CatchPanicLayer::custom(panic::recover))
@@ -92,12 +104,18 @@ where
         let state = Arc::new(self);
         let app = NormalizePath::trim_trailing_slash(Router::merge(
             Router::new()
-                .route("/authentication", get(auth::exchange_token))
-                .route("/books", get(get_books))
-                .route("/books", post(add_books))
-                .layer(middleware)
+                .route("/health", get(is_healthy))
                 .with_state(Arc::clone(&state)),
-            Router::new().route("/health", get(is_healthy).with_state(Arc::clone(&state))),
+            Router::new().nest(
+                "/api/v1",
+                Router::new()
+                    .route("/me", get(auth::verify))
+                    .route("/authentication", get(auth::exchange_token))
+                    .route("/books", get(get_books))
+                    .route("/books", post(add_books))
+                    .layer(middleware)
+                    .with_state(Arc::clone(&state)),
+            ),
         ));
 
         info!("listening on {}", http_address);
