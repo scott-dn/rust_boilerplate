@@ -4,18 +4,12 @@ use axum::http::{
     HeaderMap,
     HeaderValue,
 };
-use octocrab::{models::Author, Octocrab};
+use octocrab::models::Author;
 use serde::Deserialize;
 
 #[derive(Deserialize)]
 pub struct GhOAuth {
     pub access_token: String,
-}
-
-#[derive(Deserialize)]
-pub struct GhEmail {
-    pub email: String,
-    pub primary: bool,
 }
 
 fn build_headers(token: Option<&str>) -> Result<HeaderMap> {
@@ -35,16 +29,6 @@ fn build_headers(token: Option<&str>) -> Result<HeaderMap> {
     Ok(headers)
 }
 
-pub fn build_client(app_id: u64, secret: &str) -> Result<Octocrab> {
-    octocrab::Octocrab::builder()
-        .app(
-            app_id.into(),
-            jsonwebtoken::EncodingKey::from_rsa_pem(secret.as_bytes())?,
-        )
-        .build()
-        .map_err(|e| anyhow!(e))
-}
-
 pub async fn exchange_user_token(
     client_id: &str,
     client_secret: &str,
@@ -59,23 +43,6 @@ pub async fn exchange_user_token(
             Some(build_headers(None)?),
         )
         .await.map_err(|e| anyhow!(e))
-}
-
-pub async fn _get_email_from_token(token: &str) -> Result<String> {
-    let emails = octocrab::instance()
-        .get_with_headers::<Vec<GhEmail>, _, _>(
-            "https://api.github.com/user/emails",
-            None::<&()>,
-            Some(build_headers(Some(token))?),
-        )
-        .await
-        .map_err(|e| anyhow!(e))?;
-
-    emails
-        .into_iter()
-        .find(|e| e.primary)
-        .map(|e| e.email)
-        .ok_or(anyhow!("Could not find any primary email"))
 }
 
 pub async fn get_user_from_token(token: &str) -> Result<Author> {
