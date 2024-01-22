@@ -1,4 +1,4 @@
-# Server
+# Rust boilerplate
 
 ## Code structure
 

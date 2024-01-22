@@ -4,12 +4,20 @@ use axum::http::{
     HeaderMap,
     HeaderValue,
 };
-use octocrab::models::Author;
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 
 #[derive(Deserialize)]
 pub struct GhOAuth {
     pub access_token: String,
+}
+
+#[derive(Serialize, Deserialize)]
+pub struct GithubUser {
+    pub login: String,
+    pub id: i64,
+    pub avatar_url: String,
+    pub html_url: String,
+    pub bio: Option<String>,
 }
 
 fn build_headers(token: Option<&str>) -> Result<HeaderMap> {
@@ -45,9 +53,9 @@ pub async fn exchange_user_token(
         .await.map_err(|e| anyhow!(e))
 }
 
-pub async fn get_user_from_token(token: &str) -> Result<Author> {
+pub async fn get_ghuser_from_token(token: &str) -> Result<GithubUser> {
     octocrab::instance()
-        .get_with_headers::<Author, _, _>(
+        .get_with_headers::<GithubUser, _, _>(
             "https://api.github.com/user",
             None::<&()>,
             Some(build_headers(Some(token))?),
