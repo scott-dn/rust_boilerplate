@@ -16,7 +16,7 @@ use chrono::Utc;
 use super::InternalState;
 use crate::{
     database::entities::users::User,
-    http::utils::err_handler::response_unhandled_err,
+    http::utils::{cookie::extract_access_token, err_handler::response_unhandled_err},
     model::responses::auth::{INVALID_OATH_CODE, MISSING_OATH_CODE},
     services::{
         user::{IUserService, UserServiceErr},
@@ -28,7 +28,7 @@ use crate::{
     },
 };
 
-pub async fn exchange_token<TInternalServices: IInternalServices>(
+pub async fn authentication<TInternalServices: IInternalServices>(
     Query(query): Query<HashMap<String, String>>,
     State(state): InternalState<TInternalServices>,
 ) -> Response {
@@ -50,16 +50,37 @@ pub async fn exchange_token<TInternalServices: IInternalServices>(
         }
     };
 
+    let gh_user = match get_ghuser_from_token(&gh_oauth.access_token).await {
+        Ok(user) => user,
+        Err(e) => return response_unhandled_err(e),
+    };
+
+    let user = match state
+        .services
+        .user
+        .sync_user(&User {
+            id: gh_user.id,
+            name: gh_user.login,
+            github_url: gh_user.html_url,
+            bio: gh_user.bio,
+            avatar: gh_user.avatar_url,
+            created_at: Utc::now(),
+            updated_at: Utc::now(),
+        })
+        .await
+    {
+        Ok(user) => user,
+        Err(UserServiceErr::Other(e)) => return response_unhandled_err(e),
+    };
+
     let jwt = match jwt::encode(
-        gh_oauth.access_token,
+        user,
         &state.config.auth.jwt.secret,
         state.config.auth.jwt.expire_in,
     ) {
         Ok(jwt) => jwt,
         Err(e) => return response_unhandled_err(anyhow!(e)),
     };
-
-    // TODO: update database
 
     (
         StatusCode::FOUND,
@@ -81,43 +102,14 @@ pub async fn me<TInternalServices: IInternalServices>(
     headers: HeaderMap,
     State(state): InternalState<TInternalServices>,
 ) -> Response {
-    let jwt = match headers.get("cookie") {
-        Some(cookie) => match cookie.to_str() {
-            Ok(cookie) => match cookie
-                .split(';')
-                .find(|item| item.starts_with("access_token="))
-            {
-                Some(token) => &token[13..],
-                None => return StatusCode::UNAUTHORIZED.into_response(),
-            },
-            Err(_) => return StatusCode::UNAUTHORIZED.into_response(),
-        },
-        None => return StatusCode::UNAUTHORIZED.into_response(),
-    };
-
-    let jwt_claim = match jwt::decode(jwt, &state.config.auth.jwt.secret) {
-        Ok(jwt_claim) => jwt_claim,
+    let jwt = match extract_access_token(&headers) {
+        Ok(jwt) => jwt,
         Err(_) => return StatusCode::UNAUTHORIZED.into_response(),
     };
 
-    let gh_user = match get_ghuser_from_token(&jwt_claim.gh_token).await {
-        Ok(user) => user,
-        Err(e) => return response_unhandled_err(e),
-    };
-
-    let new_user = User {
-        id: gh_user.id,
-        name: gh_user.login,
-        github_url: gh_user.html_url,
-        bio: gh_user.bio,
-        avatar: gh_user.avatar_url,
-        created_at: Utc::now(),
-        updated_at: Utc::now(),
-    };
-
-    match state.services.user.sync_user(&new_user).await {
-        Ok(user) => (StatusCode::OK, Json(user)).into_response(),
-        Err(UserServiceErr::Other(e)) => response_unhandled_err(e),
+    match jwt::decode(jwt, &state.config.auth.jwt.secret) {
+        Ok(jwt_claim) => (StatusCode::OK, Json(jwt_claim.user)).into_response(),
+        Err(_) => StatusCode::UNAUTHORIZED.into_response(),
     }
 }
 
